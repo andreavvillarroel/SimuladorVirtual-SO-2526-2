@@ -55,5 +55,19 @@ public class MyList<T> {
     }
 
     public int getSize() { return size; }
+    
     public boolean isEmpty() { return size == 0; }
+    
+    public T findByName(String name) {
+    Node<T> temp = head;
+    while (temp != null) {
+        // Usamos toString() o una interfaz si quisiéramos ser más estrictos, 
+        // pero para este proyecto, comparar el nombre del objeto es suficiente.
+        if (temp.getData().toString().equals(name)) {
+            return temp.getData();
+        }
+        temp = temp.getNext();
+    }
+    return null;
+}
 }

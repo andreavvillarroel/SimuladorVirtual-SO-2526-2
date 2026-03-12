@@ -10,7 +10,7 @@ package models;
  */
 public class Process {
     private int pid;
-    private String operation; // CREATE, READ, DELETE
+    private String operation; // READ, WRITE, CREATE, DELETE, UPDATE
     private String state;     // READY, RUNNING, BLOCKED
     private int targetBlock;  // Bloque al que intenta acceder (para el planificador)
 
@@ -21,8 +21,13 @@ public class Process {
         this.state = "READY";
     }
 
-    // Getters y Setters necesarios para el Scheduler
+    // Getters  necesarios para el Scheduler
+    public int    getPid()          { return pid; }
+    public String getOperation()    { return operation; }
     public int getTargetBlock() { return targetBlock; }
     public String getState() { return state; }
+    
+    
+    //Setters necesarios para el Scheduler
     public void setState(String state) { this.state = state; }
 }

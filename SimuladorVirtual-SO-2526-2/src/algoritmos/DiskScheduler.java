@@ -25,180 +25,220 @@ public class DiskScheduler extends Observable implements Runnable {
     public static final String C_SCAN = "C-SCAN";
 
     // --- Cola de procesos esperando acceso al disco ---
-    private final MyQueue<Process> colaSolicitudes;
+    private final MyQueue<Process> requestQueue;
 
     // --- Algoritmo activo en este momento ---
-    private String algoritmo;
+    private String algorithm;
 
     // --- Posición actual del cabezal (número de bloque) ---
-    private int cabezal;
+    private int headPosition;
 
     // --- Dirección de movimiento para SCAN y C-SCAN ---
-    private boolean direccionAscendente;
+    private boolean movingUp;
 
     // --- Controla si el hilo sigue corriendo ---
-    private volatile boolean activo;
+    private volatile boolean running;
 
     // --- Pausa entre movimientos del cabezal en milisegundos ---
-    private int velocidadMs;
+    private int speedMs;
 
     // --- Cuando es false, el cabezal salta directo al destino (modo terminal) ---
-    private boolean animacionActiva;
+    private boolean animationEnabled;
 
 
     // --- Constructor: cabezal arranca en el bloque 0 ---
-    public DiskScheduler(String algoritmo) {
-        this.colaSolicitudes     = new MyQueue<>();
-        this.algoritmo           = algoritmo;
-        this.cabezal             = 0;
-        this.direccionAscendente = true;
-        this.activo              = true;
-        this.velocidadMs         = 500;
-        this.animacionActiva     = true;
+    public DiskScheduler(String algorithm) {
+        this.requestQueue     = new MyQueue<>();
+        this.algorithm        = algorithm;
+        this.headPosition     = 0;
+        this.movingUp         = true;
+        this.running          = true;
+        this.speedMs          = 500;
+        this.animationEnabled = true;
     }
 
 
-    // --- Agrega un proceso a la cola de solicitudes ---
-    public synchronized void agregarSolicitud(Process proceso) {
-        proceso.setState("READY");
-        colaSolicitudes.enqueue(proceso);
+     // --- Agrega un proceso a la cola de solicitudes ---
+    public synchronized void addRequest(Process process) {
+        process.setState("READY");
+        requestQueue.enqueue(process);
     }
 
-    // --- Cambia el algoritmo sin detener el hilo ---
-    public synchronized void cambiarAlgoritmo(String nuevoAlgoritmo) {
-        this.algoritmo = nuevoAlgoritmo;
+    // --- Cambia el algoritmo activo sin detener el hilo ---
+    public synchronized void setAlgorithm(String newAlgorithm) {
+        this.algorithm = newAlgorithm;
     }
 
-    // --- Detiene el hilo de forma segura ---
-    public void detener() {
-        this.activo = false;
+    // --- Detiene el hilo de forma segura al terminar la solicitud actual ---
+    public void stop() {
+        this.running = false;
     }
 
-    // --- Ajusta la velocidad de movimiento del cabezal ---
-    public void setVelocidad(int ms) {
-        this.velocidadMs = ms;
+    // --- Ajusta la velocidad de movimiento del cabezal en milisegundos ---
+    public void setSpeed(int ms) {
+        this.speedMs = ms;
     }
 
     // --- Posiciona el cabezal en un bloque inicial (se usa al cargar un JSON) ---
-    public void setCabezal(int posicion) {
-        this.cabezal = posicion;
+    public void setHeadPosition(int position) {
+        this.headPosition = position;
     }
 
-    // --- Desactiva la animación paso a paso (útil en terminal, sin GUI) ---
-    public void setModoAnimacion(boolean activa) {
-        this.animacionActiva = activa;
+    // --- Desactiva la animación paso a paso (útil en modo terminal) ---
+    public void setAnimationEnabled(boolean enabled) {
+        this.animationEnabled = enabled;
     }
 
     // --- Procesa exactamente una solicitud de la cola y retorna ---
-    public void ejecutarUno() {
-        if (colaSolicitudes.isEmpty()) return;
-        switch (algoritmo) {
-            case FIFO   -> ejecutarFIFO();
-        }
-    }
+    public void executeOne() {
+        if (requestQueue.isEmpty()) return;
+        switch (algorithm) {
+                    case FIFO   -> runFIFO();
+                    case SSTF   -> runSSTF();
+                }
+            } 
+        
     
     // --- Bucle principal del hilo: despacha al algoritmo activo ---
     @Override
     public void run() {
-        while (activo) {
-            if (!colaSolicitudes.isEmpty()) {
-                switch (algoritmo) {
-                    case FIFO   -> ejecutarFIFO();
+        while (running) {
+            if (!requestQueue.isEmpty()) {
+                switch (algorithm) {
+                    case FIFO   -> runFIFO();
+                    case SSTF   -> runSSTF();
+                    
                 }
             } else {
-                dormirMs(100); // espera corta para no quemar CPU
+                sleep(100); // espera corta para no quemar CPU
             }
         }
     }
 
 
-    // --- FIFO: atiende en orden de llegada, sin importar la distancia ---
-    private void ejecutarFIFO() {
-        Process proceso = colaSolicitudes.dequeue();
-        if (proceso == null) return;
+    // --- FIFO: atiende en orden de llegada sin importar la distancia ---
+    private void runFIFO() {
+        Process process = requestQueue.dequeue();
+        if (process == null) return;
 
-        int destino = proceso.getTargetBlock();
-        moverCabezal(destino);
-        proceso.setState("RUNNING");
-        dormirMs(velocidadMs);
-        proceso.setState("BLOCKED");
+        int target = process.getTargetBlock();
+        moveHead(target);
+        process.setState("RUNNING");
+        sleep(speedMs);
+        process.setState("BLOCKED");
 
         setChanged();
-        notifyObservers("PROCESO_ATENDIDO:" + destino);
+        notifyObservers("REQUEST_SERVED:" + target);
     }
     
-    // --- Atiende el proceso en la posición dada y notifica ---
-    private void atenderProceso(MyList<Process> lista, int indice) {
-        Process p = lista.get(indice);
-        lista.remove(indice);
-        moverCabezal(p.getTargetBlock());
-        p.setState("RUNNING");
-        dormirMs(velocidadMs);
-        p.setState("BLOCKED");
+    // --- SSTF: atiende primero el bloque más cercano al cabezal ---
+    private void runSSTF() {
+        if (requestQueue.isEmpty()) return;
+
+        // Pasar la cola a una lista para poder recorrerla sin destruirla
+        MyList<Process> temp    = drainQueueToList();
+        int             bestIdx = 0;
+        int             minDist = Integer.MAX_VALUE;
+
+        for (int i = 0; i < temp.getSize(); i++) {
+            int distance = Math.abs(temp.get(i).getTargetBlock() - headPosition);
+            if (distance < minDist) {
+                minDist = distance;
+                bestIdx = i;
+            }
+        }
+
+        Process chosen = temp.get(bestIdx);
+        temp.remove(bestIdx);
+        reloadQueueFromList(temp);
+
+        moveHead(chosen.getTargetBlock());
+        chosen.setState("RUNNING");
+        sleep(speedMs);
+        chosen.setState("BLOCKED");
+
         setChanged();
-        notifyObservers("PROCESO_ATENDIDO:" + p.getTargetBlock());
+        notifyObservers("REQUEST_SERVED:" + chosen.getTargetBlock());
+    }
+
+    
+     // --- Atiende el proceso en el índice dado y notifica a los observers ---
+    private void serveFromList(MyList<Process> list, int index) {
+        Process process = list.get(index);
+        list.remove(index);
+        moveHead(process.getTargetBlock());
+        process.setState("RUNNING");
+        sleep(speedMs);
+        process.setState("BLOCKED");
+        setChanged();
+        notifyObservers("REQUEST_SERVED:" + process.getTargetBlock());
     }
 
 
-    // --- Mueve el cabezal hacia el destino; si la animación está off, salta directo ---
-    private void moverCabezal(int destino) {
-        if (!animacionActiva) {
-            System.out.printf("    cabezal: %d → %d  (dist: %d)%n",
-                    cabezal, destino, Math.abs(destino - cabezal));
-            cabezal = destino;
+    // --- Mueve el cabezal hacia el destino; salta directo si la animación está desactivada ---
+    private void moveHead(int target) {
+        if (!animationEnabled) {
+            System.out.printf("    head: %d -> %d  (distance: %d)%n",
+                    headPosition, target, Math.abs(target - headPosition));
+            headPosition = target;
             setChanged();
-            notifyObservers("CABEZAL:" + cabezal);
+            notifyObservers("HEAD:" + headPosition);
             return;
         }
-        int paso = (destino > cabezal) ? 1 : -1;
-        while (cabezal != destino) {
-            cabezal += paso;
+        int step = (target > headPosition) ? 1 : -1;
+        while (headPosition != target) {
+            headPosition += step;
             setChanged();
-            notifyObservers("CABEZAL:" + cabezal);
-            dormirMs(30);
+            notifyObservers("HEAD:" + headPosition);
+            sleep(30);
         }
     }
 
-    // --- Vacía la cola a una MyList para poder recorrerla ---
-    private MyList<Process> vaciarColaEnLista() {
-        MyList<Process> lista = new MyList<>();
-        while (!colaSolicitudes.isEmpty()) {
-            lista.add(colaSolicitudes.dequeue());
+    // --- Vacía la cola a una MyList para poder acceder por índice ---
+    private MyList<Process> drainQueueToList() {
+        MyList<Process> list = new MyList<>();
+        while (!requestQueue.isEmpty()) {
+            list.add(requestQueue.dequeue());
         }
-        return lista;
+        return list;
     }
 
-    // --- Devuelve los procesos de la lista a la cola en el mismo orden ---
-    private void recargarColaDesodeLista(MyList<Process> lista) {
-        for (int i = 0; i < lista.getSize(); i++) {
-            colaSolicitudes.enqueue(lista.get(i));
+      // --- Devuelve todos los procesos de la lista a la cola en el mismo orden ---
+    private void reloadQueueFromList(MyList<Process> list) {
+        for (int i = 0; i < list.getSize(); i++) {
+            requestQueue.enqueue(list.get(i));
         }
     }
 
-    // --- Ordena la lista de procesos por bloque objetivo (burbuja) ---
-    private void ordenarPorBloque(MyList<Process> lista) {
-        int n = lista.getSize();
+    // --- Ordena la lista de procesos por bloque objetivo de forma ascendente ---
+    private void sortByBlock(MyList<Process> list) {
+        int n = list.getSize();
         for (int i = 0; i < n - 1; i++) {
             for (int j = 0; j < n - i - 1; j++) {
-                if (lista.get(j).getTargetBlock() > lista.get(j + 1).getTargetBlock()) {
-                    // Reconstruir la lista intercambiando j y j+1
-                    Process a = lista.get(j);
-                    Process b = lista.get(j + 1);
-                    MyList<Process> aux = new MyList<>();
-                    for (int k = 0; k < lista.getSize(); k++) aux.add(lista.get(k));
-                    while (!lista.isEmpty()) lista.remove(0);
-                    for (int k = 0; k < j; k++)               lista.add(aux.get(k));
-                    lista.add(b);
-                    lista.add(a);
-                    for (int k = j + 2; k < aux.getSize(); k++) lista.add(aux.get(k));
+                if (list.get(j).getTargetBlock() > list.get(j + 1).getTargetBlock()) {
+                    swapInList(list, j, j + 1);
                     break;
                 }
             }
         }
     }
+    
+    // --- Intercambia dos elementos en una MyList reconstruyéndola ---
+    private void swapInList(MyList<Process> list, int a, int b) {
+        Process pa = list.get(a);
+        Process pb = list.get(b);
+        MyList<Process> temp = new MyList<>();
+        for (int k = 0; k < list.getSize(); k++) temp.add(list.get(k));
+        while (!list.isEmpty()) list.remove(0);
+        for (int k = 0; k < temp.getSize(); k++) {
+            if      (k == a) list.add(pb);
+            else if (k == b) list.add(pa);
+            else             list.add(temp.get(k));
+        }
+    }
 
     // --- Pausa el hilo la cantidad de milisegundos indicada ---
-    private void dormirMs(int ms) {
+    private void sleep(int ms) {
         try {
             Thread.sleep(ms);
         } catch (InterruptedException e) {
@@ -207,12 +247,12 @@ public class DiskScheduler extends Observable implements Runnable {
     }
 
 
-    // --- Retorna la posición actual del cabezal ---
-    public int getCabezal() { return cabezal; }
+     // --- Retorna la posición actual del cabezal ---
+    public int getHeadPosition()       { return headPosition; }
 
     // --- Retorna el nombre del algoritmo activo ---
-    public String getAlgoritmo() { return algoritmo; }
+    public String getAlgorithm()       { return algorithm; }
 
-    // --- Retorna cuántos procesos esperan en la cola ---
-    public int getSolicitudesPendientes() { return colaSolicitudes.getSize(); }
+    // --- Retorna cuántas solicitudes esperan en la cola ---
+    public int getPendingCount()       { return requestQueue.getSize(); }
 }

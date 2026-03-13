@@ -95,6 +95,8 @@ public class DiskScheduler extends Observable implements Runnable {
         switch (algorithm) {
                     case FIFO   -> runFIFO();
                     case SSTF   -> runSSTF();
+                    case SCAN   -> runSCAN();
+                    case C_SCAN -> runCSCAN();
                 }
             } 
         
@@ -107,6 +109,8 @@ public class DiskScheduler extends Observable implements Runnable {
                 switch (algorithm) {
                     case FIFO   -> runFIFO();
                     case SSTF   -> runSSTF();
+                    case SCAN   -> runSCAN();
+                    case C_SCAN -> runCSCAN();
                     
                 }
             } else {
@@ -160,8 +164,66 @@ public class DiskScheduler extends Observable implements Runnable {
         setChanged();
         notifyObservers("REQUEST_SERVED:" + chosen.getTargetBlock());
     }
-
     
+    // --- SCAN: barre en una dirección e invierte al llegar al extremo ---
+    private void runSCAN() {
+        if (requestQueue.isEmpty()) return;
+
+        MyList<Process> temp = drainQueueToList();
+        sortByBlock(temp);
+
+        if (movingUp) {
+            // Buscar la primera solicitud en dirección ascendente
+            for (int i = 0; i < temp.getSize(); i++) {
+                if (temp.get(i).getTargetBlock() >= headPosition) {
+                    serveFromList(temp, i);
+                    reloadQueueFromList(temp);
+                    return;
+                }
+            }
+            // Sin solicitudes adelante: invertir dirección
+            movingUp = false;
+
+        } else {
+            // Buscar la primera solicitud en dirección descendente
+            for (int i = temp.getSize() - 1; i >= 0; i--) {
+                if (temp.get(i).getTargetBlock() <= headPosition) {
+                    serveFromList(temp, i);
+                    reloadQueueFromList(temp);
+                    return;
+                }
+            }
+            // Sin solicitudes atrás: invertir dirección
+            movingUp = true;
+        }
+
+        reloadQueueFromList(temp);
+    }
+    
+    // --- C-SCAN: solo atiende en dirección ascendente, salta al inicio al terminar ---
+    private void runCSCAN() {
+        if (requestQueue.isEmpty()) return;
+
+        MyList<Process> temp = drainQueueToList();
+        sortByBlock(temp);
+
+        // Buscar la siguiente solicitud por delante del cabezal
+        for (int i = 0; i < temp.getSize(); i++) {
+            if (temp.get(i).getTargetBlock() >= headPosition) {
+                serveFromList(temp, i);
+                reloadQueueFromList(temp);
+                return;
+            }
+        }
+
+        // Sin solicitudes adelante: el cabezal vuelve al inicio sin atender a nadie
+        headPosition = 0;
+        setChanged();
+        notifyObservers("HEAD_RESET:0");
+
+        reloadQueueFromList(temp);
+    }
+
      // --- Atiende el proceso en el índice dado y notifica a los observers ---
     private void serveFromList(MyList<Process> list, int index) {
         Process process = list.get(index);

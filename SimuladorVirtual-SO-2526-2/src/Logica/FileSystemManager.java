@@ -9,7 +9,6 @@ import models.Directory;
 import dataStructures.MyList;
  
 import java.util.Observable;
- 
 
 /**
  *
@@ -128,7 +127,6 @@ public class FileSystemManager extends Observable {
         return true;
     }
  
- 
     // --- Retorna el directorio raíz ---
     public Directory getRoot() {
         return root;
@@ -139,7 +137,6 @@ public class FileSystemManager extends Observable {
         Directory dir = findDirectory(root, dirName);
         return (dir != null) ? dir.getFiles() : null;
     }
- 
  
     // --- Busca un directorio en el árbol por nombre usando recorrido DFS ---
     private Directory findDirectory(Directory current, String name) {

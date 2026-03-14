@@ -14,6 +14,7 @@ import java.util.Observable;
  *
  * @author Francisco
  */
+
 // --- Núcleo del sistema de archivos: crea, borra archivos y controla permisos ---
 public class FileSystemManager extends Observable {
  
@@ -36,7 +37,6 @@ public class FileSystemManager extends Observable {
         this.journalManager = journalManager;
     }
  
- 
     // --- Crea un subdirectorio dentro del directorio padre indicado ---
     public void createDirectory(String parentName, String dirName, String owner) {
         Directory parent = findDirectory(root, parentName);
@@ -50,7 +50,6 @@ public class FileSystemManager extends Observable {
         setChanged();
         notifyObservers("FS_UPDATED");
     }
- 
  
     // --- Crea un archivo usando el protocolo WAL (write-ahead logging) ---
     public boolean createFile(String dirName, String fileName,

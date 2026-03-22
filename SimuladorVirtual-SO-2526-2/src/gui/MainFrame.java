@@ -135,6 +135,8 @@ public class MainFrame extends JFrame implements Observer {
  
         applyGlobalTheme();
         buildUI();
+        ToolTipManager.sharedInstance().setEnabled(false);
+        disableAllTooltips(getContentPane());
         pack();
         setLocationRelativeTo(null);
  
@@ -181,8 +183,10 @@ public class MainFrame extends JFrame implements Observer {
     private void buildUI() {
         setLayout(new BorderLayout(0, 0));
         getContentPane().setBackground(C_BG);
- 
-        add(buildTopBar(),    BorderLayout.NORTH);
+        
+        JPanel topBar = buildTopBar();
+        
+        add(topBar,    BorderLayout.NORTH);
         add(buildCenter(),    BorderLayout.CENTER);
         add(buildBottomBar(), BorderLayout.SOUTH);
     }
@@ -191,7 +195,7 @@ public class MainFrame extends JFrame implements Observer {
     //  Barra superior — controles y algoritmos
     // ----------------------------------------------------------------
     private JPanel buildTopBar() {
-        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 8));
+        JPanel bar = new JPanel(new WrapLayout(WrapLayout.LEFT, 6, 4));
         bar.setBackground(C_PANEL);
         bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, C_BORDER));
  
@@ -205,8 +209,6 @@ public class MainFrame extends JFrame implements Observer {
         });
         bar.add(comboMode);
  
-        bar.add(separator());
- 
         // --- CRUD ---
         btnCreate    = button("+ Archivo",  C_ACCENT);
         btnCreateDir = button("+ Carpeta",  C_GREEN);
@@ -218,8 +220,6 @@ public class MainFrame extends JFrame implements Observer {
         bar.add(btnCreateDir);
         bar.add(btnDelete);
  
-        bar.add(separator());
- 
         // --- Planificador ---
         bar.add(label("ALGORITMO:", C_MUTED));
         comboAlgorithm = combo(new String[]{
@@ -230,8 +230,8 @@ public class MainFrame extends JFrame implements Observer {
             scheduler.setAlgorithm((String) comboAlgorithm.getSelectedItem()));
         bar.add(comboAlgorithm);
  
-        bar.add(label("Cabezal inicio:", C_MUTED));
-        tfHeadStart = new JTextField("0", 4);
+        bar.add(label("Cabezal:", C_MUTED));
+        tfHeadStart = new JTextField("0", 3);
         styleTextField(tfHeadStart);
         bar.add(tfHeadStart);
  
@@ -240,17 +240,13 @@ public class MainFrame extends JFrame implements Observer {
         btnRunScheduler.addActionListener(e -> runScheduler());
         bar.add(btnRunScheduler);
  
-        bar.add(separator());
- 
         // --- Journal ---
-        btnCrash   = button("⚡ Simular Fallo", C_RED);
-        btnRecover = button("↺ Recuperar",      C_GREEN);
+        btnCrash   = button("⚡ Fallo",    C_RED);
+        btnRecover = button("↺ Recuperar", C_GREEN);
         btnCrash.addActionListener(e   -> simulateCrash());
         btnRecover.addActionListener(e -> recoverSystem());
         bar.add(btnCrash);
         bar.add(btnRecover);
- 
-        bar.add(separator());
  
         // --- Persistencia ---
         btnSave = button("💾 Guardar", C_MUTED);
@@ -336,15 +332,29 @@ public class MainFrame extends JFrame implements Observer {
     private JPanel buildDiskArea() {
         JPanel panel = darkPanel(new BorderLayout(0, 4));
         panel.setBorder(new EmptyBorder(8, 4, 4, 4));
- 
+        
+        // Visualizador de disco con scroll
         diskPanel = new DiskPanel(diskManager);
         JScrollPane diskScroll = scrollPane(diskPanel);
         diskScroll.setBorder(titledBorder("VISUALIZADOR DE DISCO"));
         panel.add(diskScroll, BorderLayout.CENTER);
- 
+        
         headPanel = new HeadPanel();
-        headPanel.setBorder(titledBorder("CABEZAL"));
-        panel.add(headPanel, BorderLayout.SOUTH);
+ 
+        JPanel headWrapper = darkPanel(new BorderLayout(0, 2));
+        headWrapper.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, C_BORDER),
+                new EmptyBorder(4, 6, 4, 6)));
+        headWrapper.setPreferredSize(new Dimension(0, 90));
+        headWrapper.setMinimumSize(new Dimension(0, 90));
+        headWrapper.setMaximumSize(new Dimension(Integer.MAX_VALUE, 90));
+ 
+        // Etiqueta CABEZAL como label simple dentro del panel
+        JLabel lblHead = new JLabel("CABEZAL");
+        lblHead.setForeground(C_MUTED);
+        lblHead.setFont(F_TITLE);
+        headWrapper.add(lblHead,  BorderLayout.NORTH);
+        headWrapper.add(headPanel, BorderLayout.CENTER);
  
         return panel;
     }
@@ -794,11 +804,11 @@ public class MainFrame extends JFrame implements Observer {
         UIManager.put("ComboBox.background",       C_SURFACE);
         UIManager.put("ComboBox.foreground",       C_TEXT);
         UIManager.put("Button.background",         C_SURFACE);
-        UIManager.put("ToolTip.background",   C_SURFACE);
-        UIManager.put("ToolTip.foreground",   C_TEXT);
-        UIManager.put("ToolTip.border",       BorderFactory.createLineBorder(C_BORDER));
-        ToolTipManager.sharedInstance().setEnabled(false);
-        UIManager.put("Button.foreground",         C_TEXT);
+        UIManager.put("Button.foreground",          C_TEXT);
+        UIManager.put("Button.border",              new EmptyBorder(4, 10, 4, 10));
+        UIManager.put("Button.rollover",            false);
+        UIManager.put("ToolTip.background",         new Color(15, 20, 30));
+        UIManager.put("ToolTip.foreground",         new Color(200, 210, 230));
     }
  
     private JPanel darkPanel(LayoutManager layout) {
@@ -808,26 +818,40 @@ public class MainFrame extends JFrame implements Observer {
     }
  
     private JButton button(String text, Color color) {
+        Color bgNormal = blend(color, C_PANEL, 0.12f);
+        Color bgHover  = blend(color, C_PANEL, 0.25f);
+        Color border   = blend(color, C_PANEL, 0.40f);
+ 
         JButton btn = new JButton(text);
-        btn.setBackground(new Color(color.getRed(), color.getGreen(), color.getBlue(), 30));
+        btn.setBackground(bgNormal);
         btn.setForeground(color);
         btn.setFont(F_TITLE);
         btn.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(color.getRed(), color.getGreen(), color.getBlue(), 80), 1),
+                BorderFactory.createLineBorder(border, 1),
                 new EmptyBorder(4, 10, 4, 10)));
         btn.setFocusPainted(false);
+        btn.setContentAreaFilled(true);
+        btn.setOpaque(true);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         btn.addMouseListener(new MouseAdapter() {
-            @Override public void mouseEntered(MouseEvent e) {
-                btn.setBackground(new Color(color.getRed(), color.getGreen(), color.getBlue(), 60));
-            }
-            @Override public void mouseExited(MouseEvent e) {
-                btn.setBackground(new Color(color.getRed(), color.getGreen(), color.getBlue(), 30));
-            }
+            @Override public void mouseEntered(MouseEvent e) { btn.setBackground(bgHover); }
+            @Override public void mouseExited(MouseEvent e)  { btn.setBackground(bgNormal); }
         });
         return btn;
     }
- 
+    
+    // --- Mezcla dos colores según un factor (0=solo bg, 1=solo fg) ---
+    private static Color blend(Color fg, Color bg, float factor) {
+        int r = (int)(bg.getRed()   + (fg.getRed()   - bg.getRed())   * factor);
+        int g = (int)(bg.getGreen() + (fg.getGreen() - bg.getGreen()) * factor);
+        int b = (int)(bg.getBlue()  + (fg.getBlue()  - bg.getBlue())  * factor);
+        return new Color(
+            Math.max(0, Math.min(255, r)),
+            Math.max(0, Math.min(255, g)),
+            Math.max(0, Math.min(255, b))
+        );
+    }
+    
     private JComboBox<String> combo(String[] items) {
         JComboBox<String> cb = new JComboBox<>(items);
         cb.setBackground(C_SURFACE);
@@ -947,7 +971,64 @@ public class MainFrame extends JFrame implements Observer {
     // ================================================================
     //  Entry point
     // ================================================================
+    
+     // --- Recorre todos los componentes y elimina su tooltip ---
+    private void disableAllTooltips(java.awt.Container container) {
+        for (java.awt.Component c : container.getComponents()) {
+            if (c instanceof JComponent) {
+                ((JComponent) c).setToolTipText(null);
+            }
+            if (c instanceof java.awt.Container) {
+                disableAllTooltips((java.awt.Container) c);
+            }
+        }
+    }
+    
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new MainFrame().setVisible(true));
+    }
+    
+    // ================================================================
+    //  WrapLayout: FlowLayout que baja a la siguiente fila en lugar
+    //  de recortar componentes cuando no hay espacio horizontal
+    // ================================================================
+    static class WrapLayout extends java.awt.FlowLayout {
+        WrapLayout(int align, int hgap, int vgap) { super(align, hgap, vgap); }
+ 
+        @Override
+        public Dimension preferredLayoutSize(java.awt.Container target) {
+            return layoutSize(target, true);
+        }
+        @Override
+        public Dimension minimumLayoutSize(java.awt.Container target) {
+            return layoutSize(target, false);
+        }
+ 
+        private Dimension layoutSize(java.awt.Container target, boolean preferred) {
+            synchronized (target.getTreeLock()) {
+                int targetWidth = target.getSize().width;
+                if (targetWidth == 0) targetWidth = Integer.MAX_VALUE;
+                int hgap = getHgap(), vgap = getVgap();
+                Insets insets = target.getInsets();
+                int maxWidth = targetWidth - insets.left - insets.right;
+                int width = 0, height = 0, rowWidth = 0, rowHeight = 0;
+                int count = target.getComponentCount();
+                for (int i = 0; i < count; i++) {
+                    java.awt.Component c = target.getComponent(i);
+                    if (!c.isVisible()) continue;
+                    Dimension d = preferred ? c.getPreferredSize() : c.getMinimumSize();
+                    if (rowWidth + d.width > maxWidth && rowWidth > 0) {
+                        width = Math.max(width, rowWidth);
+                        height += rowHeight + vgap;
+                        rowWidth = 0; rowHeight = 0;
+                    }
+                    rowWidth  += d.width + hgap;
+                    rowHeight  = Math.max(rowHeight, d.height);
+                }
+                width  = Math.max(width, rowWidth);
+                height += rowHeight + insets.top + insets.bottom + vgap * 2;
+                return new Dimension(width, height);
+            }
+        }
     }
 }

@@ -794,6 +794,10 @@ public class MainFrame extends JFrame implements Observer {
         UIManager.put("ComboBox.background",       C_SURFACE);
         UIManager.put("ComboBox.foreground",       C_TEXT);
         UIManager.put("Button.background",         C_SURFACE);
+        UIManager.put("ToolTip.background",   C_SURFACE);
+        UIManager.put("ToolTip.foreground",   C_TEXT);
+        UIManager.put("ToolTip.border",       BorderFactory.createLineBorder(C_BORDER));
+        ToolTipManager.sharedInstance().setEnabled(false);
         UIManager.put("Button.foreground",         C_TEXT);
     }
  

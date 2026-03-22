@@ -35,7 +35,7 @@ public class HeadPanel extends JPanel {
  
     public HeadPanel() {
         setBackground(BG_COLOR);
-        setPreferredSize(new Dimension(0, 60));
+        setPreferredSize(new Dimension(0, 72));
  
         // --- Timer que suaviza el movimiento del cabezal ---
         animTimer = new Timer(16, e -> {
@@ -74,7 +74,7 @@ public class HeadPanel extends JPanel {
  
         int w        = getWidth();
         int h        = getHeight();
-        int trackY   = h / 2;
+        int trackY   = h / 2 + 10;
         int padding  = 30;
         int trackW   = w - padding * 2;
  
@@ -111,10 +111,18 @@ public class HeadPanel extends JPanel {
         g2.fillOval(headX - 7, trackY - 7, 14, 14);
  
         // Etiqueta de posición
-        g2.setColor(HEAD_COLOR);
         g2.setFont(new Font("Monospaced", Font.BOLD, 11));
         String label = "Bloque " + currentPosition;
-        g2.drawString(label, headX - g2.getFontMetrics().stringWidth(label) / 2, trackY - 14);
+        FontMetrics fm = g2.getFontMetrics();
+        int lw = fm.stringWidth(label);
+        int lx = Math.max(padding, Math.min(headX - lw / 2, w - padding - lw));
+        int ly = trackY - 16;
+        
+        // Fondo oscuro para evitar que se solape con el borde del TitledBorder
+        g2.setColor(new Color(10, 14, 20, 200));
+        g2.fillRoundRect(lx - 4, ly - fm.getAscent(), lw + 8, fm.getHeight(), 4, 4);
+        g2.setColor(HEAD_COLOR);
+        g2.drawString(label, lx, ly);
  
         g2.dispose();
     }

@@ -18,7 +18,7 @@ import java.util.Observable;
 public class DiskManager extends Observable {
  
     // --- Número total de bloques en el disco simulado ---
-    public static final int TOTAL_BLOCKS = 64;
+    public static final int TOTAL_BLOCKS = 256;
  
     // --- Arreglo físico del disco: índice == ID del bloque ---
     private final Block[] disk;

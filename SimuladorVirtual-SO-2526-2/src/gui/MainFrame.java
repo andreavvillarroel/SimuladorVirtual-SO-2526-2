@@ -624,29 +624,289 @@ public class MainFrame extends JFrame implements Observer {
         log("↺ Recuperación completada. Operaciones deshechas: " + undone);
     }
  
-    // --- Guarda el sistema usando JsonSaver de Andrea ---
+    // --- Guarda el sistema usando JsonSaver ---
     private void saveSystem() {
         JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Guardar sistema de archivos");
         chooser.setSelectedFile(new java.io.File("system_save.json"));
-        if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-            String path = chooser.getSelectedFile().getAbsolutePath();
-            JsonSaver.save(fsManager.getRoot(), path);
-            log("💾 Sistema guardado en: " + path);
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+ 
+        String path = chooser.getSelectedFile().getAbsolutePath();
+        // Asegurarse de que tenga extensión .json
+        if (!path.endsWith(".json")) path += ".json";
+        JsonSaver.save(fsManager.getRoot(), path);
+        log("💾 Sistema guardado en: " + path);
+    }
+ 
+    // --- Carga un JSON guardado por JsonSaver y reconstruye el árbol y el disco ---
+    // --- Carga un JSON guardado por JsonSaver y reconstruye el árbol y el disco ---
+    private void loadSystem() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Cargar sistema de archivos");
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
+ 
+        String path = chooser.getSelectedFile().getAbsolutePath();
+ 
+        // Leer el archivo completo
+        String json;
+        try {
+            json = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)));
+        } catch (Exception e) {
+            showError("No se pudo leer el archivo: " + e.getMessage());
+            return;
+        }
+ 
+        // Reiniciar el disco antes de cargar
+        resetDisk();
+        journalManager.clearJournal();
+        lockManager.releaseAll();
+        colorIndex = 0;
+ 
+        // Parsear y reconstruir el árbol desde el JSON
+        try {
+            String rootBlock = extractBlock(json, "root");
+            loadDirectory(rootBlock, "/");
+        } catch (Exception e) {
+            showError("Error al parsear el JSON: " + e.getMessage());
+            return;
+        }
+ 
+        refreshTree();
+        refreshDisk();
+        refreshFileTable();
+        log("📂 Sistema cargado desde: " + chooser.getSelectedFile().getName());
+    }
+ 
+    // --- Carga recursivamente un directorio desde su bloque JSON ---
+    private void loadDirectory(String block, String parentName) {
+        String dirName = extractString(block, "name");
+ 
+        // Crear el directorio si no es la raíz
+        if (!dirName.equals("/")) {
+            fsManager.createDirectory(parentName, dirName, "root");
+        }
+ 
+        String currentDir = dirName.equals("/") ? "/" : dirName;
+ 
+        // Cargar archivos del directorio
+        String filesArray = extractArray(block, "files");
+        if (filesArray != null && !filesArray.isBlank()) {
+            for (String fileObj : splitObjects(filesArray)) {
+                String name       = extractString(fileObj, "name");
+                int    size       = extractInt(fileObj, "size");
+                String owner      = extractString(fileObj, "owner");
+                String color      = extractString(fileObj, "color");
+                if (name.isEmpty()) continue;
+                if (color.isEmpty()) color = FILE_COLORS[colorIndex % FILE_COLORS.length];
+                colorIndex++;
+                fsManager.createFile(currentDir, name, size, owner, color);
+            }
+        }
+ 
+        // Cargar subdirectorios recursivamente
+        String subsArray = extractArray(block, "subdirectories");
+        if (subsArray != null && !subsArray.isBlank()) {
+            for (String subObj : splitObjects(subsArray)) {
+                if (!subObj.isBlank()) loadDirectory(subObj, currentDir);
+            }
         }
     }
  
-    // --- Carga un estado guardado (placeholder hasta tener JsonLoader integrado) ---
-    private void loadSystem() {
-        JFileChooser chooser = new JFileChooser();
-        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            log("📂 Carga desde: " + chooser.getSelectedFile().getName()
-                    + " (integrar con JsonLoader)");
+    // --- Extrae el valor String de una clave JSON ---
+        private String extractString(String json, String key) {
+        String pattern = "\"" + key + "\"";
+        int idx = json.indexOf(pattern);
+        if (idx == -1) return "";
+        int colon = json.indexOf(':', idx);
+        if (colon == -1) return "";
+        int q1 = json.indexOf('"', colon + 1);
+        if (q1 == -1) return "";
+        int q2 = json.indexOf('"', q1 + 1);
+        if (q2 == -1) return "";
+        return json.substring(q1 + 1, q2);
+    }
+ 
+    // --- Extrae el valor entero de una clave JSON ---
+    private int extractInt(String json, String key) {
+        String pattern = "\"" + key + "\"";
+        int idx = json.indexOf(pattern);
+        if (idx == -1) return 1;
+        int colon = json.indexOf(':', idx);
+        if (colon == -1) return 1;
+        StringBuilder num = new StringBuilder();
+        for (int i = colon + 1; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (Character.isDigit(c)) num.append(c);
+            else if (!Character.isWhitespace(c) && num.length() > 0) break;
         }
+        return num.length() > 0 ? Integer.parseInt(num.toString()) : 1;
+    }
+ 
+    // --- Extrae el contenido de un bloque { } asociado a una clave ---
+    private String extractBlock(String json, String key) {
+        String pattern = "\"" + key + "\"";
+        int idx = json.indexOf(pattern);
+        if (idx == -1) return "";
+        int start = json.indexOf('{', idx);
+        if (start == -1) return "";
+        return extractBalanced(json, start, '{', '}');
+    }
+ 
+    // --- Extrae el contenido de un array [ ] asociado a una clave ---
+    private String extractArray(String json, String key) {
+        String pattern = "\"" + key + "\"";
+        int idx = json.indexOf(pattern);
+        if (idx == -1) return null;
+        int start = json.indexOf('[', idx);
+        if (start == -1) return null;
+        int end = findClosing(json, start, '[', ']');
+        if (end == -1) return null;
+        return json.substring(start + 1, end).trim();
+    }
+ 
+    // --- Extrae un bloque balanceado desde la posición dada ---
+    private String extractBalanced(String json, int start, char open, char close) {
+        int level = 0;
+        for (int i = start; i < json.length(); i++) {
+            if (json.charAt(i) == open)  level++;
+            if (json.charAt(i) == close) { level--; if (level == 0) return json.substring(start, i + 1); }
+        }
+        return "";
+    }
+ 
+    // --- Encuentra el índice del cierre balanceado ---
+    private int findClosing(String json, int start, char open, char close) {
+        int level = 0;
+        for (int i = start; i < json.length(); i++) {
+            if (json.charAt(i) == open)  level++;
+            if (json.charAt(i) == close) { level--; if (level == 0) return i; }
+        }
+        return -1;
+    }
+ 
+    // --- Divide el contenido de un array en objetos { } individuales ---
+    private java.util.List<String> splitObjects(String array) {
+        java.util.List<String> result = new java.util.ArrayList<>();
+        int i = 0;
+        while (i < array.length()) {
+            int start = array.indexOf('{', i);
+            if (start == -1) break;
+            int end = findClosing(array, start, '{', '}');
+            if (end == -1) break;
+            result.add(array.substring(start, end + 1));
+            i = end + 1;
+        }
+        return result;
     }
  
     // ================================================================
     //  Refresh de componentes visuales
     // ================================================================
+    
+    // --- Carga un JSON en formato JsonSaver (root + files + subdirectories) ---
+    private void loadSavedSystem(String path, String json) {
+        resetDisk();
+        journalManager.clearJournal();
+        lockManager.releaseAll();
+        colorIndex = 0;
+ 
+        try {
+            String rootBlock = extractBlock(json, "root");
+            loadDirectory(rootBlock, "/");
+        } catch (Exception e) {
+            showError("Error al parsear el JSON: " + e.getMessage());
+            return;
+        }
+ 
+        refreshTree();
+        refreshDisk();
+        refreshFileTable();
+        log("📂 Sistema cargado desde: " + new java.io.File(path).getName());
+    }
+ 
+    // --- Carga un JSON en formato P1.json (test_id + requests + system_files) ---
+    private void loadTestJson(String path) {
+        // Usar JsonLoader para parsear el formato test_id/requests/system_files
+        persistence.JsonLoader.TestData data;
+        try {
+            data = persistence.JsonLoader.cargar(path);
+        } catch (Exception e) {
+            showError("No se pudo cargar el test: " + e.getMessage());
+            return;
+        }
+ 
+        // Verificar que el disco tenga espacio suficiente
+        int totalBloques = 0;
+        for (int i = 0; i < data.archivos.getSize(); i++) {
+            totalBloques += Integer.parseInt(data.archivos.get(i)[2]);
+        }
+        if (totalBloques > DiskManager.TOTAL_BLOCKS) {
+            showError("El test requiere " + totalBloques + " bloques pero el disco tiene "
+                    + DiskManager.TOTAL_BLOCKS + "."
+                    + "Aumenta TOTAL_BLOCKS en DiskManager a " + nextPowerOf2(totalBloques) + ".");
+            return;
+        };
+ 
+        // Reiniciar el sistema
+        resetDisk();
+        journalManager.clearJournal();
+        lockManager.releaseAll();
+        colorIndex = 0;
+ 
+        // Crear directorio de trabajo y cargar archivos
+        fsManager.createDirectory("/", "test", "root");
+        String[] colors = {"#FF6B6B","#FFD93D","#6BCB77","#4D96FF",
+                           "#C77DFF","#FF9A3C","#00C9A7","#F72585"};
+        for (int i = 0; i < data.archivos.getSize(); i++) {
+            String[] a     = data.archivos.get(i);
+            String   name  = a[1];
+            int      size  = Integer.parseInt(a[2]);
+            String   color = colors[i % colors.length];
+            fsManager.createFile("test", name, size, "root", color);
+        }
+ 
+        // Configurar el scheduler con el cabezal inicial del JSON
+        tfHeadStart.setText(String.valueOf(data.initialHead));
+        scheduler.setHeadPosition(data.initialHead);
+        headPanel.moveTo(data.initialHead);
+        diskPanel.setHeadPosition(data.initialHead);
+ 
+        // Encolar las solicitudes del JSON
+        for (int i = 0; i < data.procesos.getSize(); i++) {
+            scheduler.addRequest(data.procesos.get(i));
+        }
+ 
+        refreshTree();
+        refreshDisk();
+        refreshFileTable();
+ 
+        log("📋 Test cargado: " + data.testId
+                + " | Cabezal: " + data.initialHead
+                + " | Archivos: " + data.archivos.getSize()
+                + " | Solicitudes: " + data.procesos.getSize());
+        log("   Presiona ▶ Ejecutar para iniciar el scheduler.");
+    }
+ 
+    // --- Libera todos los bloques ocupados del disco ---
+    private void resetDisk() {
+        boolean[] isLinked = new boolean[DiskManager.TOTAL_BLOCKS];
+        for (int i = 0; i < DiskManager.TOTAL_BLOCKS; i++) {
+            int next = diskManager.getBlock(i).getNextBlockId();
+            if (next != -1 && next < DiskManager.TOTAL_BLOCKS) isLinked[next] = true;
+        }
+        for (int i = 0; i < DiskManager.TOTAL_BLOCKS; i++) {
+            if (!diskManager.getBlock(i).isFree() && !isLinked[i]) {
+                diskManager.freeBlocks(i);
+            }
+        }
+    }
+    
+     // --- Retorna la siguiente potencia de 2 mayor o igual a n ---
+    private int nextPowerOf2(int n) {
+        int p = 64;
+        while (p < n) p *= 2;
+        return p;
+    }
  
     // --- Repinta el disco ---
     private void refreshDisk() {

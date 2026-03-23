@@ -279,7 +279,7 @@ public class DiskScheduler extends Observable implements Runnable {
             for (int j = 0; j < n - i - 1; j++) {
                 if (list.get(j).getTargetBlock() > list.get(j + 1).getTargetBlock()) {
                     swapInList(list, j, j + 1);
-                    break;
+                   
                 }
             }
         }

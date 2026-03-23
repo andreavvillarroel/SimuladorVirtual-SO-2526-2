@@ -99,6 +99,9 @@ public class MainFrame extends JFrame implements Observer {
  
     // --- Estado de modo (Admin / Usuario) ---
     private boolean adminMode = true;
+    
+    // --- Solicitudes del último test cargado (preserva el orden del JSON) ---
+    private MyList<Process> testRequests = null;
  
     // --- Colores para asignar a nuevos archivos ---
     private static final String[] FILE_COLORS = {
@@ -589,15 +592,22 @@ public class MainFrame extends JFrame implements Observer {
         scheduler.setHeadPosition(headStart);
         scheduler.addObserver(this);
  
-        // Agregar solicitudes de prueba (una por bloque ocupado)
-        Block[] disk = diskManager.getDisk();
-        int pid = 1;
-        for (int i = 0; i < DiskManager.TOTAL_BLOCKS; i++) {
-            if (!disk[i].isFree()) {
-                scheduler.addRequest(new Process(pid++, "READ", i));
+        // Usar las solicitudes del test si hay un JSON cargado,
+        // si no, encolar los bloques ocupados del disco en orden
+        if (testRequests != null && testRequests.getSize() > 0) {
+            for (int i = 0; i < testRequests.getSize(); i++) {
+                Process p = testRequests.get(i);
+                scheduler.addRequest(new Process(p.getPid(), p.getOperation(), p.getTargetBlock()));
+            }
+        } else {
+            Block[] disk = diskManager.getDisk();
+            int pid = 1;
+            for (int i = 0; i < DiskManager.TOTAL_BLOCKS; i++) {
+                if (!disk[i].isFree()) {
+                    scheduler.addRequest(new Process(pid++, "READ", i));
+                }
             }
         }
- 
         headPanel.clearHistory();
         headPanel.moveTo(headStart);
         diskPanel.setHeadPosition(headStart);
@@ -852,6 +862,9 @@ public class MainFrame extends JFrame implements Observer {
             String   color = colors[i % colors.length];
             fsManager.createFile("test", name, size, "root", color);
         }
+        
+        // Guardar las solicitudes del test para usarlas al ejecutar el scheduler
+        testRequests = data.procesos;
  
         // Configurar el scheduler con el cabezal inicial del JSON
         tfHeadStart.setText(String.valueOf(data.initialHead));

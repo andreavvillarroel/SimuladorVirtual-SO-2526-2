@@ -188,7 +188,12 @@ public class MainFrame extends JFrame implements Observer {
         
         add(topBar,    BorderLayout.NORTH);
         add(buildCenter(),    BorderLayout.CENTER);
-        add(buildBottomBar(), BorderLayout.SOUTH);
+        
+        // Panel sur: cabezal arriba, journal+consola abajo
+        JPanel southPane = darkPanel(new BorderLayout(0, 0));
+        southPane.add(buildHeadBar(),   BorderLayout.NORTH);
+        southPane.add(buildBottomBar(), BorderLayout.CENTER);
+        add(southPane, BorderLayout.SOUTH);
     }
  
     // ----------------------------------------------------------------
@@ -328,35 +333,38 @@ public class MainFrame extends JFrame implements Observer {
         return split;
     }
  
-    // --- Disco + cabezal ---
+    // --- Disco sin cabezal (el cabezal va en buildUI directamente) ---
     private JPanel buildDiskArea() {
-        JPanel panel = darkPanel(new BorderLayout(0, 4));
+        JPanel panel = darkPanel(new BorderLayout(0, 0));
         panel.setBorder(new EmptyBorder(8, 4, 4, 4));
-        
-        // Visualizador de disco con scroll
+ 
         diskPanel = new DiskPanel(diskManager);
         JScrollPane diskScroll = scrollPane(diskPanel);
         diskScroll.setBorder(titledBorder("VISUALIZADOR DE DISCO"));
         panel.add(diskScroll, BorderLayout.CENTER);
-        
+ 
+        return panel;
+    }
+ 
+    // --- Panel del cabezal: altura fija, va entre el centro y el bottom ---
+    private JPanel buildHeadBar() {
         headPanel = new HeadPanel();
  
-        JPanel headWrapper = darkPanel(new BorderLayout(0, 2));
-        headWrapper.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 0, 0, C_BORDER),
-                new EmptyBorder(4, 6, 4, 6)));
-        headWrapper.setPreferredSize(new Dimension(0, 90));
-        headWrapper.setMinimumSize(new Dimension(0, 90));
-        headWrapper.setMaximumSize(new Dimension(Integer.MAX_VALUE, 90));
+        JPanel wrapper = darkPanel(new BorderLayout(0, 2));
+        wrapper.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 1, 0, C_BORDER),
+                new EmptyBorder(4, 8, 4, 8)));
+        wrapper.setPreferredSize(new Dimension(0, 85));
+        wrapper.setMinimumSize(new Dimension(0, 85));
+        wrapper.setMaximumSize(new Dimension(Integer.MAX_VALUE, 85));
  
-        // Etiqueta CABEZAL como label simple dentro del panel
         JLabel lblHead = new JLabel("CABEZAL");
         lblHead.setForeground(C_MUTED);
         lblHead.setFont(F_TITLE);
-        headWrapper.add(lblHead,  BorderLayout.NORTH);
-        headWrapper.add(headPanel, BorderLayout.CENTER);
+        wrapper.add(lblHead,   BorderLayout.NORTH);
+        wrapper.add(headPanel, BorderLayout.CENTER);
  
-        return panel;
+        return wrapper;
     }
  
     // --- Este: tabla de archivos ---

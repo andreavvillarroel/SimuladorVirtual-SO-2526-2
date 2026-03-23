@@ -639,10 +639,9 @@ public class MainFrame extends JFrame implements Observer {
     }
  
     // --- Carga un JSON guardado por JsonSaver y reconstruye el árbol y el disco ---
-    // --- Carga un JSON guardado por JsonSaver y reconstruye el árbol y el disco ---
     private void loadSystem() {
         JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("Cargar sistema de archivos");
+        chooser.setDialogTitle("Cargar JSON");
         if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
  
         String path = chooser.getSelectedFile().getAbsolutePath();
@@ -656,25 +655,14 @@ public class MainFrame extends JFrame implements Observer {
             return;
         }
  
-        // Reiniciar el disco antes de cargar
-        resetDisk();
-        journalManager.clearJournal();
-        lockManager.releaseAll();
-        colorIndex = 0;
- 
-        // Parsear y reconstruir el árbol desde el JSON
-        try {
-            String rootBlock = extractBlock(json, "root");
-            loadDirectory(rootBlock, "/");
-        } catch (Exception e) {
-            showError("Error al parsear el JSON: " + e.getMessage());
-            return;
+        // Detectar formato por clave principal
+        if (json.contains("\"test_id\"")) {
+            loadTestJson(path);
+        } else if (json.contains("\"root\"")) {
+            loadSavedSystem(path, json);
+        } else {
+            showError("Formato JSON no reconocido.\nEl archivo debe contener 'test_id' o 'root'.");
         }
- 
-        refreshTree();
-        refreshDisk();
-        refreshFileTable();
-        log("📂 Sistema cargado desde: " + chooser.getSelectedFile().getName());
     }
  
     // --- Carga recursivamente un directorio desde su bloque JSON ---

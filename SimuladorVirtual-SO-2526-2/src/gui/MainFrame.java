@@ -689,9 +689,31 @@ public class MainFrame extends JFrame implements Observer {
  
     // --- Recupera el sistema deshaciendo operaciones PENDING ---
     private void recoverSystem() {
+        // Antes de recuperar, recolectar los nombres de archivos PENDING con CREATE
+        // para eliminarlos del árbol después de liberar sus bloques
+        MyList<String> pendingCreates = new MyList<>();
+        dataStructures.MyList<models.JournalEntry> entries = journalManager.getEntries();
+        for (int i = 0; i < entries.getSize(); i++) {
+            models.JournalEntry e = entries.get(i);
+            if (e.getStatus().equals("PENDING") && e.getOperation().equals("CREATE")) {
+                pendingCreates.add(e.getTargetName());
+            }
+        }
+ 
+        // Ejecutar la recuperación (libera bloques y marca FAILED)
         int undone = journalManager.recoverSystem();
         lockManager.releaseAll();
+ 
+        // Eliminar del árbol los archivos cuya creación quedó pendiente
+        for (int i = 0; i < pendingCreates.getSize(); i++) {
+            String fileName = pendingCreates.get(i);
+            tryDeleteInTree(fsManager.getRoot(), fileName);
+            log("   UNDO: archivo '" + fileName + "' eliminado del árbol.");
+        }
+ 
         refreshDisk();
+        refreshTree();
+        refreshFileTable();
         log("↺ Recuperación completada. Operaciones deshechas: " + undone);
     }
  

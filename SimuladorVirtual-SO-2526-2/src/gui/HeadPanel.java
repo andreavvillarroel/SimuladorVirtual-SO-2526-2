@@ -85,7 +85,7 @@ public class HeadPanel extends JPanel {
         // --- Marcas de bloques ---
         g2.setFont(new Font("Monospaced", Font.PLAIN, 9));
         g2.setColor(LABEL_COLOR);
-        int step = DiskManager.TOTAL_BLOCKS <= 64 ? 8 : 16;
+        int step = DiskManager.TOTAL_BLOCKS <= 64 ? 8 : DiskManager.TOTAL_BLOCKS <= 128 ? 16 : 32;
         for (int i = 0; i <= DiskManager.TOTAL_BLOCKS; i += step) {
             int x = padding + (int) ((float) i / DiskManager.TOTAL_BLOCKS * trackW);
             g2.drawLine(x, trackY - 6, x, trackY + 6);

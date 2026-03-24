@@ -91,6 +91,7 @@ public class MainFrame extends JFrame implements Observer {
     private JButton           btnCreate;
     private JButton           btnCreateDir;
     private JButton           btnDelete;
+    private JButton           btnRename;
     private JButton           btnCrash;
     private JButton           btnRecover;
     private JButton           btnSave;
@@ -133,7 +134,7 @@ public class MainFrame extends JFrame implements Observer {
         // --- Construir la ventana ---
         setTitle("Sistema de Archivos Simulado");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setMinimumSize(new Dimension(1280, 800));
+        setMinimumSize(new Dimension(1400, 850));
         setBackground(C_BG);
  
         applyGlobalTheme();
@@ -224,8 +225,11 @@ public class MainFrame extends JFrame implements Observer {
         btnCreate.addActionListener(e    -> dialogCreateFile());
         btnCreateDir.addActionListener(e -> dialogCreateDir());
         btnDelete.addActionListener(e    -> deleteSelected());
+        btnRename = button("Renombrar", C_YELLOW);
+        btnRename.addActionListener(e -> renameSelected());
         bar.add(btnCreate);
         bar.add(btnCreateDir);
+        bar.add(btnRename);
         bar.add(btnDelete);
  
         // --- Planificador ---
@@ -273,7 +277,7 @@ public class MainFrame extends JFrame implements Observer {
     private JSplitPane buildCenter() {
         JSplitPane leftRight = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
                 buildWestPanel(), buildCenterAndEast());
-        leftRight.setDividerLocation(220);
+        leftRight.setDividerLocation(200);
         leftRight.setBackground(C_BG);
         leftRight.setBorder(null);
         leftRight.setDividerSize(4);
@@ -329,7 +333,7 @@ public class MainFrame extends JFrame implements Observer {
     private JSplitPane buildCenterAndEast() {
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
                 buildDiskArea(), buildEastPanel());
-        split.setDividerLocation(560);
+        split.setDividerLocation(780);
         split.setBackground(C_BG);
         split.setBorder(null);
         split.setDividerSize(4);
@@ -559,7 +563,60 @@ public class MainFrame extends JFrame implements Observer {
                         : "✗ No se pudo eliminar '" + fileName + "'");
         }
     }
+    
+    // --- Renombra el archivo seleccionado en la tabla ---
+    private void renameSelected() {
+        int row = fileTable.getSelectedRow();
+        if (row < 0) { showError("Selecciona un archivo en la tabla para renombrar."); return; }
  
+        String oldName = (String) fileTableModel.getValueAt(row, 1);
+ 
+        String newName = JOptionPane.showInputDialog(this,
+                "Nuevo nombre para '" + oldName + "':",
+                "Renombrar archivo", JOptionPane.PLAIN_MESSAGE);
+ 
+        if (newName == null || newName.trim().isEmpty()) return;
+        newName = newName.trim();
+ 
+        // Buscar y renombrar en el árbol de directorios
+        boolean ok = renameInTree(fsManager.getRoot(), oldName, newName);
+ 
+        if (ok) {
+            refreshTree();
+            refreshFileTable();
+            log("✓ Archivo '" + oldName + "' renombrado a '" + newName + "'");
+        } else {
+            showError("No se pudo renombrar '" + oldName + "'.");
+        }
+    }
+ 
+    // --- Busca el archivo en el árbol y lo renombra usando reflexión ---
+    private boolean renameInTree(Directory dir, String oldName, String newName) {
+        MyList<models.File> files = dir.getFiles();
+        for (int i = 0; i < files.getSize(); i++) {
+            models.File f = files.get(i);
+            if (f.getName().equals(oldName)) {
+                // Crear nuevo archivo con el mismo contenido pero distinto nombre
+                models.File renamed = new models.File(
+                        newName, f.getSize(), f.getOwner(),
+                        f.getStartBlockId(), f.getColorHex());
+                files.remove(i);
+                files.add(renamed);
+                // Registrar en el journal
+                int txId = journalManager.logOperation("UPDATE",
+                        oldName + " -> " + newName, f.getStartBlockId(), f.getSize());
+                journalManager.commit(txId);
+                return true;
+            }
+        }
+        // Buscar en subdirectorios
+        MyList<Directory> subs = dir.getSubDirectories();
+        for (int i = 0; i < subs.getSize(); i++) {
+            if (renameInTree(subs.get(i), oldName, newName)) return true;
+        }
+        return false;
+    }
+    
     // --- Busca y elimina un archivo recorriendo el árbol ---
     private boolean tryDeleteInTree(Directory dir, String fileName) {
         MyList<models.File> files = dir.getFiles();

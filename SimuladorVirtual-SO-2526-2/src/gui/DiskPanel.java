@@ -27,9 +27,9 @@ public class DiskPanel extends JPanel {
     static final Color CHAIN_COLOR    = new Color(99,  202, 183, 120); // verde encadenado
  
     // --- Dimensiones de cada bloque en píxeles ---
-    private static final int BLOCK_SIZE = 56;
-    private static final int BLOCK_GAP  = 6;
-    private static final int COLS       = 8;
+    private static final int BLOCK_SIZE = 44;
+    private static final int BLOCK_GAP  = 4;
+    private static final int COLS       = 16;
     private static final int PADDING    = 20;
  
     // --- Referencia al disco físico ---

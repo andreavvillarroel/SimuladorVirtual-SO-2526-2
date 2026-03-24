@@ -485,6 +485,7 @@ public class MainFrame extends JFrame implements Observer {
  
     // --- Diálogo para crear un archivo ---
     private void dialogCreateFile() {
+        if (!adminMode) { showError("Solo el Administrador puede crear archivos."); return; }
         JPanel form = buildFormPanel();
         JTextField tfName  = formField(form, "Nombre del archivo:");
         JTextField tfSize  = formField(form, "Tamaño en bloques:");
@@ -525,6 +526,7 @@ public class MainFrame extends JFrame implements Observer {
  
     // --- Diálogo para crear directorio ---
     private void dialogCreateDir() {
+        if (!adminMode) { showError("Solo el Administrador puede crear archivos."); return; }
         JPanel form = buildFormPanel();
         JTextField tfName   = formField(form, "Nombre del directorio:");
         JTextField tfParent = formField(form, "Directorio padre:");
@@ -548,6 +550,7 @@ public class MainFrame extends JFrame implements Observer {
  
     // --- Elimina el archivo seleccionado en la tabla ---
     private void deleteSelected() {
+        if (!adminMode) { showError("Solo el Administrador puede crear archivos."); return; }
         int row = fileTable.getSelectedRow();
         if (row < 0) { showError("Selecciona un archivo en la tabla para eliminar."); return; }
  
@@ -566,6 +569,7 @@ public class MainFrame extends JFrame implements Observer {
     
     // --- Renombra el archivo seleccionado en la tabla ---
     private void renameSelected() {
+        if (!adminMode) { showError("Solo el Administrador puede crear archivos."); return; }
         int row = fileTable.getSelectedRow();
         if (row < 0) { showError("Selecciona un archivo en la tabla para renombrar."); return; }
  
@@ -1100,6 +1104,7 @@ public class MainFrame extends JFrame implements Observer {
         btnDelete.setEnabled(adminMode);
         btnCrash.setEnabled(adminMode);
         btnRecover.setEnabled(adminMode);
+        btnRename.setEnabled(adminMode);
     }
  
     // ================================================================
